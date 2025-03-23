@@ -1,4 +1,5 @@
 """
+
 Access to the Soliscloud API for PV monitoring.
 Works for all Ginlong brands using the Soliscloud API
 
@@ -56,6 +57,7 @@ PLANT_LIST = "/v1/api/userStationList"
 AUTHENTICATE = "/v2/api/login"
 CONTROL = "/v2/api/control"
 AT_READ = "/v2/api/atRead"
+RESULT = "/v2/api/result"
 
 from .control_const import ALL_CONTROLS, HMI_CID
 
@@ -445,7 +447,7 @@ class SoliscloudAPI(BaseAPI):
                 "inverterSn": str(device_serial),
                 "cid": HMI_CID,
             }
-            result = await self._post_data_json(AT_READ, params, csrf=True)
+            result = await self._post_data_json_with_result(AT_READ, params, csrf=True)
             if result[SUCCESS] is True:
                 jsondata = result[CONTENT]
                 if jsondata["code"] == "0":
@@ -475,7 +477,7 @@ class SoliscloudAPI(BaseAPI):
                 valid = False
                 while (attempts < CONTROL_RETRIES) and not valid:
                     attempts += 1
-                    result = await self._post_data_json(AT_READ, params, csrf=True)
+                    result = await self._post_data_json_with_result(AT_READ, params, csrf=True)
                     if result[SUCCESS] is True:
                         jsondata = result[CONTENT]
                         if jsondata["code"] == "0":
@@ -724,6 +726,31 @@ class SoliscloudAPI(BaseAPI):
             "Authorization": authorization,
         }
         return header
+
+    async def _post_data_json_with_result(
+        self, canonicalized_resource: str, params: dict[str, Any], csrf: bool = False
+    ) -> dict[str, Any]:
+        """Http-post data to specified domain/canonicalized_resource."""
+        result = await self._post_data_json(canonicalized_resource, params, csrf)
+
+        orderId = result.get(CONTENT, {}).get("orderId")
+        # does this need an delayed lookup ?
+        for count in range(0, 10):
+            if not result.get(CONTENT, {}).get("data", {}).get("needLoop", false):
+                break
+            if not orderId:
+                raise Exception("no orderId")
+            params = { "orderId": orderId }
+
+            await asyncio.sleep(0.5)
+            result = await self._post_data_json(RESULT, params, csrf=True)
+            _LOGGER.debug(result)
+
+        data = result.get(CONTENT,{}).get("data",{})
+        # to avoid changing too much code, put value in msg
+        if "value" in data and "msg" not in data:
+            result[CONTENT]["data"]["msg"] = result[CONTENT]["data"]["value"]
+        return result
 
     async def _post_data_json(
         self, canonicalized_resource: str, params: dict[str, Any], csrf: bool = False
