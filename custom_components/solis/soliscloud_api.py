@@ -736,7 +736,7 @@ class SoliscloudAPI(BaseAPI):
         orderId = result.get(CONTENT, {}).get("orderId")
         # does this need an delayed lookup ?
         for count in range(0, 10):
-            if not result.get(CONTENT, {}).get("data", {}).get("needLoop", false):
+            if not result.get(CONTENT, {}).get("data", {}).get("needLoop", False):
                 break
             if not orderId:
                 raise Exception("no orderId")
